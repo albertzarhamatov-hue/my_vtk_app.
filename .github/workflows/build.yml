@@ -14,7 +14,8 @@ jobs:
           pip install flet
           pip install requests
       - name: Build APK
-        run: flet build apk
+        # Добавляем имя пакета и стабильную версию Python 3.11
+        run: flet build apk --package-name com.flet.my_vtk_app --python-version 3.11
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
