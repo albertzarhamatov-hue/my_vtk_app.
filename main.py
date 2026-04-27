@@ -1,36 +1,37 @@
 import flet as ft
 
 def main(page: ft.Page):
+    # Оставляем настройки как были
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#121212"
     page.padding = 20
 
-    # --- ХРАНИЛИЩЕ ДАННЫХ ---
+    # --- ХРАНИЛИЩЕ ДАННЫХ (БЕЗ ИЗМЕНЕНИЙ) ---
     stock = {}  
-    vlan_base = [] # Хранилище для VLAN
-    ip_base = []   # Хранилище для IP
+    vlan_base = [] 
+    ip_base = []   
 
-    # --- КОМПОНЕНТЫ ПРИЁМА ---
+    # --- КОМПОНЕНТЫ ПРИЁМА (БЕЗ ИЗМЕНЕНИЙ) ---
     product_in = ft.TextField(label="Товар", border_color="#40C4FF")
     count_in = ft.TextField(label="Кол-во (напр. 10 или 1000м)", border_color="#40C4FF")
     serial_in = ft.TextField(label="Серийные номера (через пробел)")
     priem_results = ft.Column(spacing=10)
 
-    # --- КОМПОНЕНТЫ VLAN ---
+    # --- КОМПОНЕНТЫ VLAN (БЕЗ ИЗМЕНЕНИЙ) ---
     v_vlan = ft.TextField(label="VLAN", width=100)
     v_ip = ft.TextField(label="IP адрес", width=150)
     v_selo = ft.TextField(label="Село", width=150)
     v_search = ft.TextField(label="Поиск по селу", prefix_icon=ft.Icons.SEARCH, on_change=lambda e: update_vlan_list())
     vlan_list_display = ft.Column(spacing=10)
 
-    # --- КОМПОНЕНТЫ IP АДРЕСОВ ---
+    # --- КОМПОНЕНТЫ IP АДРЕСОВ (БЕЗ ИЗМЕНЕНИЙ) ---
     ip_vlan = ft.TextField(label="VLAN", width=100)
     ip_addr = ft.TextField(label="IP адрес", width=150)
     ip_selo = ft.TextField(label="Село", width=150)
     ip_search = ft.TextField(label="Поиск по селу", prefix_icon=ft.Icons.SEARCH, on_change=lambda e: update_ip_list())
     ip_list_display = ft.Column(spacing=10)
 
-    # --- КОМПОНЕНТЫ СПИСАНИЯ ---
+    # --- ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ СИМВОЛОВ) ---
     def on_product_change(e):
         name = product_drop.value
         if name in stock:
@@ -50,7 +51,6 @@ def main(page: ft.Page):
     account_out = ft.TextField(label="Лицевой счет")
     address_out = ft.TextField(label="Адрес")
 
-    # --- ИСТОРИЯ ---
     history_list = ft.Column(spacing=10)
 
     def show_details(details):
@@ -58,7 +58,6 @@ def main(page: ft.Page):
                              actions=[ft.TextButton("ОК", on_click=lambda e: page.close(dlg))])
         page.overlay.append(dlg); dlg.open = True; page.update()
 
-    # --- ФУНКЦИИ VLAN ---
     def add_vlan(e):
         if v_vlan.value and v_selo.value:
             vlan_base.append({"vlan": v_vlan.value, "ip": v_ip.value, "selo": v_selo.value})
@@ -88,7 +87,6 @@ def main(page: ft.Page):
                 )
         page.update()
 
-    # --- ФУНКЦИИ IP ---
     def add_ip(e):
         if ip_addr.value and ip_selo.value:
             ip_base.append({"vlan": ip_vlan.value, "ip": ip_addr.value, "selo": ip_selo.value})
@@ -185,15 +183,15 @@ def main(page: ft.Page):
                 update_all_lists()
                 navigate("history")
 
-    # --- ФУНКЦИИ НАСТРОЕК ---
+    # --- НОВЫЕ ФУНКЦИИ НАСТРОЕК ---
     def change_theme(e):
         page.bgcolor = "#000000" if e.control.value else "#121212"
         page.update()
 
     def change_font(e):
-        size = int(e.control.value)
-        page.text_theme.body_medium.size = size
-        page.text_theme.body_large.size = size + 2
+        new_size = int(e.control.value)
+        # Принудительное обновление стилей для мобильных
+        page.theme = ft.Theme(text_theme=ft.TextTheme(body_medium=ft.TextStyle(size=new_size)))
         page.update()
 
     def navigate(view):
@@ -207,6 +205,7 @@ def main(page: ft.Page):
         return ft.Container(content=ft.ListTile(leading=ft.Icon(icon, color="#40C4FF"), title=ft.Text(text),
         on_click=lambda _: navigate(view_name)), bgcolor="#1E1E20", border_radius=12, margin=8)
 
+    # --- ПРЕДСТАВЛЕНИЯ ---
     main_view = ft.Column([
         ft.Text("Склад и Сеть", size=24, weight="bold", color="#40C4FF"),
         menu_card(ft.Icons.DOWNLOAD, "Приём материала", "priem"),
@@ -255,22 +254,17 @@ def main(page: ft.Page):
 
     settings_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Настройки")]),
-        ft.Container(
-            content=ft.Column([
-                ft.Switch(label="Глубокий черный фон", on_change=change_theme),
-                ft.Dropdown(
-                    label="Размер шрифта",
-                    on_change=change_font,
-                    options=[
-                        ft.dropdown.Option("14", "Маленький"),
-                        ft.dropdown.Option("18", "Средний"),
-                        ft.dropdown.Option("24", "Большой"),
-                    ],
-                    value="18"
-                ),
-            ]),
-            bgcolor="#1E1E20", padding=20, border_radius=10
-        )
+        ft.Switch(label="Глубокий черный фон", on_change=change_theme),
+        ft.Dropdown(
+            label="Размер шрифта",
+            on_change=change_font,
+            options=[
+                ft.dropdown.Option("14", "Маленький"),
+                ft.dropdown.Option("18", "Средний"),
+                ft.dropdown.Option("22", "Большой"),
+            ],
+            value="18"
+        ),
     ], visible=False)
 
     page.add(main_view, priem_view, spisanie_view, history_view, vlan_view, ip_view, settings_view)
