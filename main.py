@@ -1,3 +1,7 @@
+import os
+# Отключаем ctypes для предотвращения сбоя (Fatal Signal) на Android
+os.environ["FLET_PYTHON_NO_CTYPES"] = "1"
+
 import flet as ft
 
 def main(page: ft.Page):
