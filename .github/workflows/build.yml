@@ -1,0 +1,22 @@
+name: Build Flet APK
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Install dependencies
+        run: |
+          pip install flet
+          pip install requests
+      - name: Build APK
+        run: flet build apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: my-app-release
+          path: build/apk/*.apk
