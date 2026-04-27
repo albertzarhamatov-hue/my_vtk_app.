@@ -22,11 +22,10 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install flet requests
-
+          
       - name: Build APK
-        # Мы убрали --package-name, так как он иногда берется из папки, 
-        # и оставили только самое важное для исправления черного экрана
-        run: flet build apk --python-version 3.11
+        # Используем самую простую команду, чтобы избежать ошибок синтаксиса
+        run: flet build apk
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
