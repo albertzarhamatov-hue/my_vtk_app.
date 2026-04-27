@@ -5,15 +5,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      - name: Install dependencies
+
+      - name: Install Python dependencies
         run: |
           pip install flet requests
+
       - name: Build APK
         run: flet build apk --package-name com.flet.my_vtk_app --python-version 3.11
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
