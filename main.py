@@ -6,12 +6,15 @@ import webbrowser
 import shutil
 from datetime import datetime
 
-# --- НАСТРОЙКА ПУТЕЙ ---
+# --- ИСПРАВЛЕННАЯ НАСТРОЙКА ПУТЕЙ ДЛЯ ANDROID ---
 def get_path():
+    # Используем временную директорию, которая всегда доступна приложению на Android
     if os.name != 'nt':
-        base = os.path.join(os.getcwd(), "VTK_NEW_Data")
+        base = os.path.join(tempfile.gettempdir(), "VTK_DATA_SAFE")
     else:
-        base = os.path.join(tempfile.gettempdir(), "VTK_NEW_PRO_Final")
+        # Для Windows на рабочем столе или в Temp
+        base = os.path.join(os.path.expanduser("~"), "Desktop", "VTK_NEW_PRO_Data")
+    
     if not os.path.exists(base): 
         os.makedirs(base, exist_ok=True)
     return base
@@ -23,9 +26,9 @@ LOGS_DIR = os.path.join(BASE_DIR, "logs")
 IP_BS_DIR = os.path.join(BASE_DIR, "ip_bs")
 PHOTOS_DIR = os.path.join(BASE_DIR, "photos")
 
+# Создаем все папки при запуске
 for d in [SKLAD_DIR, VLAN_DIR, LOGS_DIR, IP_BS_DIR, PHOTOS_DIR]:
-    if not os.path.exists(d): 
-        os.makedirs(d, exist_ok=True)
+    os.makedirs(d, exist_ok=True)
 
 def main(page: ft.Page):
     page.title = "VTK_NEW PRO"
@@ -124,12 +127,13 @@ def main(page: ft.Page):
 
         def refresh():
             sklad_view.controls.clear()
-            for f in sorted(os.listdir(SKLAD_DIR)):
-                if f.endswith(".txt"):
-                    with open(os.path.join(SKLAD_DIR, f), "r", encoding="utf-8") as file:
-                        d = file.read().split("|")
-                        info = f"Товар: {d[0]}\nSN: {d[1]}\nКол-во: {d[2]}\nДата: {d[3]}"
-                        sklad_view.controls.append(ft.Row([ft.Container(content=ft.Text(f"📦 {d[0]} | SN: {d[1]} | ({d[2]} шт.)", size=12*txt_size_multi), expand=True, on_click=lambda _, fn=d[0], txt=info: open_details("Детали", txt, fn)), ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, fn=f: [os.remove(os.path.join(SKLAD_DIR, fn)), refresh()])]))
+            if os.path.exists(SKLAD_DIR):
+                for f in sorted(os.listdir(SKLAD_DIR)):
+                    if f.endswith(".txt"):
+                        with open(os.path.join(SKLAD_DIR, f), "r", encoding="utf-8") as file:
+                            d = file.read().split("|")
+                            info = f"Товар: {d[0]}\nSN: {d[1]}\nКол-во: {d[2]}\nДата: {d[3]}"
+                            sklad_view.controls.append(ft.Row([ft.Container(content=ft.Text(f"📦 {d[0]} | SN: {d[1]} | ({d[2]} шт.)", size=12*txt_size_multi), expand=True, on_click=lambda _, fn=d[0], txt=info: open_details("Детали", txt, fn)), ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, fn=f: [os.remove(os.path.join(SKLAD_DIR, fn)), refresh()])]))
             page.update()
 
         def save(e):
@@ -156,11 +160,12 @@ def main(page: ft.Page):
         page.clean()
         def get_opts(): 
             options = []
-            for f in os.listdir(SKLAD_DIR):
-                if f.endswith(".txt"):
-                    with open(os.path.join(SKLAD_DIR, f), "r", encoding="utf-8") as file:
-                        d = file.read().split("|")
-                        options.append(ft.dropdown.Option(key=f, text=f"{d[0]} (SN: {d[1]})"))
+            if os.path.exists(SKLAD_DIR):
+                for f in os.listdir(SKLAD_DIR):
+                    if f.endswith(".txt"):
+                        with open(os.path.join(SKLAD_DIR, f), "r", encoding="utf-8") as file:
+                            d = file.read().split("|")
+                            options.append(ft.dropdown.Option(key=f, text=f"{d[0]} (SN: {d[1]})"))
             return options
         dd = ft.Dropdown(label="Товар", options=get_opts(), bgcolor="#1C1C1E")
         acc, addr = ft.TextField(label="Л/С", bgcolor="#1C1C1E"), ft.TextField(label="Адрес", bgcolor="#1C1C1E")
@@ -169,9 +174,10 @@ def main(page: ft.Page):
             if not dd.value or not acc.value: return
             src = os.path.join(SKLAD_DIR, dd.value)
             with open(src, "r", encoding="utf-8") as f: d = f.read().split("|")
-            total = int(d[2]); rem = int(cnt.value)
+            total = int(d[2]); rem = int(cnt.value) if cnt.value.isdigit() else 1
             if rem > total: rem = total
-            with open(os.path.join(LOGS_DIR, "history.txt"), "a", encoding="utf-8") as log: log.write(f"{datetime.now().strftime('%d.%m %H:%M')} | {d[0]} | {rem}шт | {acc.value} | {addr.value}\n")
+            with open(os.path.join(LOGS_DIR, "history.txt"), "a", encoding="utf-8") as log:
+                log.write(f"{datetime.now().strftime('%d.%m %H:%M')} | {d[0]} | {rem}шт | {acc.value} | {addr.value}\n")
             if total - rem <= 0: os.remove(src)
             else:
                 with open(src, "w", encoding="utf-8") as f: f.write(f"{d[0]}|{d[1]}|{total-rem}|{d[3]}")
