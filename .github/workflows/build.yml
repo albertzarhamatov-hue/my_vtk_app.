@@ -20,11 +20,14 @@ jobs:
 
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install flet requests
 
       - name: Build APK
-        run: flet build apk --package-name com.flet.my_vtk_app --python-version 3.11 --verbose
-
+        # Мы убрали --package-name, так как он иногда берется из папки, 
+        # и оставили только самое важное для исправления черного экрана
+        run: flet build apk --python-version 3.11
+        
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
