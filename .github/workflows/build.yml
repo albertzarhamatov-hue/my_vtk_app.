@@ -1,5 +1,10 @@
 name: Build Flet APK
+
 on: [push]
+
+# Принудительно включаем Node.24, чтобы GitHub не ругался
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -20,15 +25,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install flet requests
-          
+          python -m pip install --upgrade pip
+          pip install flet flet-build requests
+
       - name: Build APK
-        # Используем самую простую команду, чтобы избежать ошибок синтаксиса
-        run: flet build apk
-        
+        # Добавляем --verbose, чтобы в логах видеть, если что-то пойдет не так
+        # И явно указываем файл запуска
+        run: flet build apk --verbose
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: my-app-release
+          name: app-release
+          # Проверь этот путь, Flet обычно кладет сюда:
           path: build/apk/*.apk
