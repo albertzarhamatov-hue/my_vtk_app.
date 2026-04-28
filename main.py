@@ -7,16 +7,19 @@ os.environ["FLET_PYTHON_NO_CTYPES"] = "1"
 
 import flet as ft
 
-# --- ОБНОВЛЕННЫЙ ДВИЖОК: СТАБИЛЬНЫЕ ПУТИ ---
+# --- ИСПРАВЛЕННЫЙ ДВИЖОК: ПУТИ ДЛЯ ANDROID ---
 def get_path():
-    # Для Android/iOS используем внутреннюю директорию приложения
-    # Для Windows/Linux используем папку в профиле пользователя или temp
-    if os.getenv("ANDROID_DATA") or os.getenv("EXTERNAL_STORAGE"):
-        base = os.path.expanduser("~/Sklad_Set_Data")
-    elif os.name != 'nt':
+    # Проверяем, запущено ли на Android через наличие специфичных переменных окружения
+    if "ANDROID_DATA" in os.environ or os.path.exists("/data/user/0/"):
+        # Используем внутреннюю папку приложения (files), там права всегда есть
+        # Для Flet на Android это обычно /data/user/0/com.flet.my_vtk_app/files/
         base = os.path.join(os.getcwd(), "Sklad_Set_Data")
+    elif os.name != 'nt':
+        # Для Linux/macOS
+        base = os.path.join(os.path.expanduser("~"), "Sklad_Set_Data")
     else:
-        base = os.path.join(os.getenv('APPDATA') or tempfile.gettempdir(), "Sklad_Set_Final_App")
+        # Для Windows
+        base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
     
     if not os.path.exists(base): 
         os.makedirs(base, exist_ok=True)
@@ -28,9 +31,9 @@ VLAN_DIR = os.path.join(BASE_DIR, "vlan")
 IP_DIR = os.path.join(BASE_DIR, "ip_base")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
-# Гарантируем создание всех поддиректорий
 for d in [STOCK_DIR, VLAN_DIR, IP_DIR, LOGS_DIR]:
-    os.makedirs(d, exist_ok=True)
+    if not os.path.exists(d): 
+        os.makedirs(d, exist_ok=True)
 
 def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
@@ -164,22 +167,19 @@ def main(page: ft.Page):
         unique_products = set()
         if os.path.exists(STOCK_DIR):
             for f in os.listdir(STOCK_DIR):
-                try:
-                    with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
-                        data = file.read().split("|")
-                        if len(data) < 4: continue
-                        unique_products.add(data[0])
-                        unit = "м" if data[2] == "m" else ("ш" if data[2] == "sh" else "")
-                        priem_results.controls.append(
-                            ft.Container(
-                                content=ft.Row([
-                                    ft.Text(f"{data[0]} | {data[1]} | {data[3]} {unit}", size=14, expand=True),
-                                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red400", on_click=lambda _, p=f: [os.remove(os.path.join(STOCK_DIR, p)), refresh_all()])
-                                ]),
-                                bgcolor="#1E1E20", padding=10, border_radius=8
-                            )
+                with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
+                    data = file.read().split("|")
+                    unique_products.add(data[0])
+                    unit = "м" if data[2] == "m" else ("ш" if data[2] == "sh" else "")
+                    priem_results.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Text(f"{data[0]} | {data[1]} | {data[3]} {unit}", size=14, expand=True),
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red400", on_click=lambda _, p=f: [os.remove(os.path.join(STOCK_DIR, p)), refresh_all()])
+                            ]),
+                            bgcolor="#1E1E20", padding=10, border_radius=8
                         )
-                except: continue
+                    )
         product_drop.options = [ft.dropdown.Option(p) for p in sorted(list(unique_products))]
         update_history_list(); page.update()
 
@@ -188,27 +188,23 @@ def main(page: ft.Page):
         mode = list(unit_type.selected)[0]
         val_str = count_in.value.strip()
         if not name or not val_str: return
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         if mode == "m":
-            fname = f"m_{timestamp}.txt"
+            fname = f"m_{datetime.now().strftime('%H%M%S_%f')}.txt"
             with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|Метраж|m|{val_str}")
         elif mode == "sh":
-            fname = f"sh_{timestamp}.txt"
+            fname = f"sh_{datetime.now().strftime('%H%M%S_%f')}.txt"
             with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|Штучно|sh|{val_str}")
         else:
             qty = int(val_str) if val_str.isdigit() else 1
             sns = serial_in.value.strip().split()
             for i in range(qty):
                 sn = sns[i] if i < len(sns) else "Б/Н"
-                fname = f"sn_{timestamp}_{i}.txt"
+                fname = f"sn_{datetime.now().strftime('%H%M%S_%f')}.txt"
                 with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|{sn}|sn|1")
-        
-        log_name = f"log_priem_{timestamp}.txt"
+        log_name = f"log_priem_{datetime.now().strftime('%H%M%S_%f')}.txt"
         log_text = f"ПРИЁМ: {name} ({val_str} {mode})"
         if current_photo_path.current: log_text += f" | IMG:{current_photo_path.current}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
-        
         product_in.value = ""; count_in.value = "1"; serial_in.value = ""
         current_photo_path.current = None; refresh_all()
 
@@ -216,28 +212,20 @@ def main(page: ft.Page):
         if not product_drop.value or not serial_drop.value: return
         file_path = os.path.join(STOCK_DIR, serial_drop.value)
         if not os.path.exists(file_path): return
-        
         with open(file_path, "r", encoding="utf-8") as f: data = f.read().split("|")
         prod_name, sn_val, mode, current_qty = data[0], data[1], data[2], float(data[3])
         minus_qty = float(count_out.value.replace(",", ".")) if count_out.value else 1.0
         unit = "м" if mode == "m" else ("ш" if mode == "sh" else "шт")
-        
         if mode in ["m", "sh"]:
             new_qty = current_qty - minus_qty
-            if new_qty <= 0: 
-                os.remove(file_path)
-                final_spisano = f"{current_qty} {unit} (полностью)"
+            if new_qty <= 0: os.remove(file_path); final_spisano = f"{current_qty} {unit} (полностью)"
             else:
                 with open(file_path, "w", encoding="utf-8") as f: f.write(f"{prod_name}|{sn_val}|{mode}|{new_qty}")
                 final_spisano = f"{minus_qty} {unit} (остаток {new_qty})"
-        else: 
-            os.remove(file_path)
-            final_spisano = f"SN: {sn_val}"
-            
+        else: os.remove(file_path); final_spisano = f"SN: {sn_val}"
         log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
         log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | Списано: {final_spisano} | Л/С: {account_out.value} | Адрес: {address_out.value}"
         if current_photo_path.current: log_text += f" | IMG:{current_photo_path.current}"
-        
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
         account_out.value = ""; address_out.value = ""; count_out.value = "1"
         current_photo_path.current = None; refresh_all(); navigate("history")
@@ -310,7 +298,7 @@ def main(page: ft.Page):
                 ])
             ])
         ),
-        ft.Text("Версия движка: 2.4 ALBERT STABLE", color="grey", size=12)
+        ft.Text("Версия движка: 2.5 ALBERT FIX", color="grey", size=12)
     ], visible=False)
 
     page.add(main_view, priem_view, spisanie_view, history_view, vlan_view, ip_view, settings_view)
