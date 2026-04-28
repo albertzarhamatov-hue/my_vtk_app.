@@ -1,25 +1,12 @@
 import os
 import tempfile
 from datetime import datetime
-
-# Отключаем ctypes для предотвращения сбоя (Fatal Signal) on Android
-os.environ["FLET_PYTHON_NO_CTYPES"] = "1"
-
 import flet as ft
 
-# --- ИСПРАВЛЕННЫЙ ДВИЖОК: ПУТИ ДЛЯ ANDROID ---
+# --- 3️⃣ ИСПРАВЛЕННЫЙ ДВИЖОК: ПУТИ ЧЕРЕЗ tempfile.gettempdir() ---
 def get_path():
-    # Проверяем, запущено ли на Android через наличие специфичных переменных окружения
-    if "ANDROID_DATA" in os.environ or os.path.exists("/data/user/0/"):
-        # Используем внутреннюю папку приложения (files), там права всегда есть
-        # Для Flet на Android это обычно /data/user/0/com.flet.my_vtk_app/files/
-        base = os.path.join(os.getcwd(), "Sklad_Set_Data")
-    elif os.name != 'nt':
-        # Для Linux/macOS
-        base = os.path.join(os.path.expanduser("~"), "Sklad_Set_Data")
-    else:
-        # Для Windows
-        base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
+    # Универсальный путь для всех систем в папку временных файлов
+    base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
     
     if not os.path.exists(base): 
         os.makedirs(base, exist_ok=True)
@@ -41,6 +28,9 @@ def main(page: ft.Page):
     page.padding = 20
     page.title = "Склад и Сеть"
 
+    # --- 1️⃣ УБРАН ft.Ref (теперь простая переменная) ---
+    current_photo_path = None
+
     # --- ФУНКЦИИ НАСТРОЕК ---
     def change_font_size(e):
         page.text_style = ft.TextStyle(size=int(e.control.value))
@@ -49,9 +39,6 @@ def main(page: ft.Page):
     def change_app_color(color_name):
         page.theme = ft.Theme(color_scheme_seed=color_name)
         page.update()
-    
-    current_photo_path = ft.Ref[str]()
-    current_photo_path.current = None
 
     def show_detail_log(content):
         parts = content.split(" | IMG:")
@@ -72,8 +59,9 @@ def main(page: ft.Page):
         page.open(dlg)
 
     def on_file_result(e: ft.FilePickerResultEvent):
+        nonlocal current_photo_path
         if e.files:
-            current_photo_path.current = e.files[0].path
+            current_photo_path = e.files[0].path
             page.snack_bar = ft.SnackBar(ft.Text(f"Выбрано фото: {e.files[0].name}"))
             page.snack_bar.open = True
             page.update()
@@ -184,6 +172,7 @@ def main(page: ft.Page):
         update_history_list(); page.update()
 
     def add_to_stock(e):
+        nonlocal current_photo_path
         name = product_in.value.strip()
         mode = list(unit_type.selected)[0]
         val_str = count_in.value.strip()
@@ -203,12 +192,13 @@ def main(page: ft.Page):
                 with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|{sn}|sn|1")
         log_name = f"log_priem_{datetime.now().strftime('%H%M%S_%f')}.txt"
         log_text = f"ПРИЁМ: {name} ({val_str} {mode})"
-        if current_photo_path.current: log_text += f" | IMG:{current_photo_path.current}"
+        if current_photo_path: log_text += f" | IMG:{current_photo_path}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
         product_in.value = ""; count_in.value = "1"; serial_in.value = ""
-        current_photo_path.current = None; refresh_all()
+        current_photo_path = None; refresh_all()
 
     def complete_spisanie(e):
+        nonlocal current_photo_path
         if not product_drop.value or not serial_drop.value: return
         file_path = os.path.join(STOCK_DIR, serial_drop.value)
         if not os.path.exists(file_path): return
@@ -225,10 +215,10 @@ def main(page: ft.Page):
         else: os.remove(file_path); final_spisano = f"SN: {sn_val}"
         log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
         log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | Списано: {final_spisano} | Л/С: {account_out.value} | Адрес: {address_out.value}"
-        if current_photo_path.current: log_text += f" | IMG:{current_photo_path.current}"
+        if current_photo_path: log_text += f" | IMG:{current_photo_path}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
         account_out.value = ""; address_out.value = ""; count_out.value = "1"
-        current_photo_path.current = None; refresh_all(); navigate("history")
+        current_photo_path = None; refresh_all(); navigate("history")
 
     def navigate(view):
         main_view.visible = (view == "main"); priem_view.visible = (view == "priem")
