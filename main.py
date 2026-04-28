@@ -3,11 +3,9 @@ import tempfile
 from datetime import datetime
 import flet as ft
 
-# --- 3️⃣ ИСПРАВЛЕННЫЙ ДВИЖОК: ПУТИ ЧЕРЕЗ tempfile.gettempdir() ---
+# --- ДВИЖОК ПУТЕЙ ---
 def get_path():
-    # Универсальный путь для всех систем в папку временных файлов
     base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
-    
     if not os.path.exists(base): 
         os.makedirs(base, exist_ok=True)
     return base
@@ -28,9 +26,6 @@ def main(page: ft.Page):
     page.padding = 20
     page.title = "Склад и Сеть"
 
-    # --- 1️⃣ УБРАН ft.Ref (теперь простая переменная) ---
-    current_photo_path = None
-
     # --- ФУНКЦИИ НАСТРОЕК ---
     def change_font_size(e):
         page.text_style = ft.TextStyle(size=int(e.control.value))
@@ -41,33 +36,14 @@ def main(page: ft.Page):
         page.update()
 
     def show_detail_log(content):
-        parts = content.split(" | IMG:")
-        text_content = parts[0]
-        image_path = parts[1] if len(parts) > 1 else None
-
-        dlg_content = ft.Column(tight=True, spacing=10)
-        dlg_content.controls.append(ft.Text(text_content))
-        
-        if image_path and os.path.exists(image_path):
-            dlg_content.controls.append(ft.Image(src=image_path, width=300, height=300, fit=ft.ImageFit.CONTAIN, border_radius=10))
-
+        # Убрано разделение по IMG, берем только текст
+        text_content = content.split(" | IMG:")[0]
         dlg = ft.AlertDialog(
             title=ft.Text("Детали записи"),
-            content=dlg_content,
+            content=ft.Text(text_content),
             actions=[ft.TextButton("Закрыть", on_click=lambda e: page.close(dlg))],
         )
         page.open(dlg)
-
-    def on_file_result(e: ft.FilePickerResultEvent):
-        nonlocal current_photo_path
-        if e.files:
-            current_photo_path = e.files[0].path
-            page.snack_bar = ft.SnackBar(ft.Text(f"Выбрано фото: {e.files[0].name}"))
-            page.snack_bar.open = True
-            page.update()
-
-    file_picker = ft.FilePicker(on_result=on_file_result)
-    page.overlay.append(file_picker)
 
     # --- ЭЛЕМЕНТЫ ПРИЁМКИ ---
     product_in = ft.TextField(label="Название товара", border_color="#40C4FF")
@@ -172,7 +148,6 @@ def main(page: ft.Page):
         update_history_list(); page.update()
 
     def add_to_stock(e):
-        nonlocal current_photo_path
         name = product_in.value.strip()
         mode = list(unit_type.selected)[0]
         val_str = count_in.value.strip()
@@ -190,35 +165,42 @@ def main(page: ft.Page):
                 sn = sns[i] if i < len(sns) else "Б/Н"
                 fname = f"sn_{datetime.now().strftime('%H%M%S_%f')}.txt"
                 with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|{sn}|sn|1")
+        
         log_name = f"log_priem_{datetime.now().strftime('%H%M%S_%f')}.txt"
         log_text = f"ПРИЁМ: {name} ({val_str} {mode})"
-        if current_photo_path: log_text += f" | IMG:{current_photo_path}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
+        
         product_in.value = ""; count_in.value = "1"; serial_in.value = ""
-        current_photo_path = None; refresh_all()
+        refresh_all()
 
     def complete_spisanie(e):
-        nonlocal current_photo_path
         if not product_drop.value or not serial_drop.value: return
         file_path = os.path.join(STOCK_DIR, serial_drop.value)
         if not os.path.exists(file_path): return
         with open(file_path, "r", encoding="utf-8") as f: data = f.read().split("|")
+        
         prod_name, sn_val, mode, current_qty = data[0], data[1], data[2], float(data[3])
         minus_qty = float(count_out.value.replace(",", ".")) if count_out.value else 1.0
         unit = "м" if mode == "m" else ("ш" if mode == "sh" else "шт")
+        
         if mode in ["m", "sh"]:
             new_qty = current_qty - minus_qty
-            if new_qty <= 0: os.remove(file_path); final_spisano = f"{current_qty} {unit} (полностью)"
+            if new_qty <= 0: 
+                os.remove(file_path)
+                final_spisano = f"{current_qty} {unit} (полностью)"
             else:
                 with open(file_path, "w", encoding="utf-8") as f: f.write(f"{prod_name}|{sn_val}|{mode}|{new_qty}")
                 final_spisano = f"{minus_qty} {unit} (остаток {new_qty})"
-        else: os.remove(file_path); final_spisano = f"SN: {sn_val}"
+        else: 
+            os.remove(file_path)
+            final_spisano = f"SN: {sn_val}"
+            
         log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
         log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | Списано: {final_spisano} | Л/С: {account_out.value} | Адрес: {address_out.value}"
-        if current_photo_path: log_text += f" | IMG:{current_photo_path}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
+        
         account_out.value = ""; address_out.value = ""; count_out.value = "1"
-        current_photo_path = None; refresh_all(); navigate("history")
+        refresh_all(); navigate("history")
 
     def navigate(view):
         main_view.visible = (view == "main"); priem_view.visible = (view == "priem")
@@ -242,14 +224,14 @@ def main(page: ft.Page):
     priem_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Приём материала")]),
         product_in, ft.Text("Тип учета:", size=12, color="grey"), unit_type, count_in, serial_in,
-        ft.Row([ft.ElevatedButton("ФОТО", icon=ft.Icons.IMAGE, on_click=lambda _: file_picker.pick_files()), ft.ElevatedButton("ДОБАВИТЬ", on_click=add_to_stock, bgcolor="#40C4FF", color="black", expand=True)]),
+        ft.ElevatedButton("ДОБАВИТЬ", on_click=add_to_stock, bgcolor="#40C4FF", color="black", expand=True),
         ft.Divider(), priem_results
     ], visible=False, scroll=ft.ScrollMode.AUTO)
 
     spisanie_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Списание")]),
         product_drop, serial_drop, count_out, account_out, address_out,
-        ft.Row([ft.ElevatedButton("ФОТО СПИСАНИЯ", icon=ft.Icons.IMAGE, on_click=lambda _: file_picker.pick_files()), ft.ElevatedButton("ЗАВЕРШИТЬ", on_click=complete_spisanie, bgcolor="#FF5252", color="white", expand=True)])
+        ft.ElevatedButton("ЗАВЕРШИТЬ", on_click=complete_spisanie, bgcolor="#FF5252", color="white", expand=True)
     ], visible=False)
 
     history_view = ft.Column([
@@ -259,22 +241,20 @@ def main(page: ft.Page):
 
     vlan_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("База VLAN")]),
-        ft.Row([v_vlan, v_ip, v_selo]), ft.ElevatedButton("ДОБАВИТЬ", on_click=lambda _: None, bgcolor="#40C4FF", color="black", width=500),
+        ft.Row([v_vlan, v_ip, v_selo]), ft.ElevatedButton("ДОБАВИТЬ", on_click=lambda _: None, bgcolor="#40C4FF", color="black", expand=True),
         ft.Divider(), v_search, vlan_list_display
     ], visible=False, scroll=ft.ScrollMode.AUTO)
 
     ip_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("База IP")]),
-        ft.Row([ip_vlan, ip_addr, ip_selo]), ft.ElevatedButton("ДОБАВИТЬ", on_click=lambda _: None, bgcolor="#40C4FF", color="black", width=500),
+        ft.Row([ip_vlan, ip_addr, ip_selo]), ft.ElevatedButton("ДОБАВИТЬ", on_click=lambda _: None, bgcolor="#40C4FF", color="black", expand=True),
         ft.Divider(), ip_search, ip_list_display
     ], visible=False, scroll=ft.ScrollMode.AUTO)
 
     settings_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Настройки")]),
         ft.Container(
-            padding=15,
-            bgcolor="#1E1E20",
-            border_radius=12,
+            padding=15, bgcolor="#1E1E20", border_radius=12,
             content=ft.Column([
                 ft.Text("Шрифт приложения:", size=16),
                 ft.Slider(min=10, max=24, value=14, divisions=7, label="{value}", on_change=change_font_size),
@@ -288,7 +268,7 @@ def main(page: ft.Page):
                 ])
             ])
         ),
-        ft.Text("Версия движка: 2.5 ALBERT FIX", color="grey", size=12)
+        ft.Text("Версия движка: 2.5 ALBERT TEXT-ONLY", color="grey", size=12)
     ], visible=False)
 
     page.add(main_view, priem_view, spisanie_view, history_view, vlan_view, ip_view, settings_view)
