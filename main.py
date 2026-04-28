@@ -1,11 +1,21 @@
 import os
 import tempfile
 from datetime import datetime
+
+# --- КРИТИЧЕСКИЙ ФИКС ДЛЯ ANDROID ---
+os.environ["FLET_PYTHON_NO_CTYPES"] = "1"
+
 import flet as ft
 
-# --- ДВИЖОК ПУТЕЙ ---
+# --- ОБНОВЛЕННЫЙ ДВИЖОК ПУТЕЙ (КАК В РАБОЧЕМ ВАРИАНТЕ) ---
 def get_path():
-    base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
+    if os.name != 'nt':
+        # Путь для Android (текущая папка приложения)
+        base = os.path.join(os.getcwd(), "Sklad_Set_Data")
+    else:
+        # Путь для Windows (временная папка)
+        base = os.path.join(tempfile.gettempdir(), "Sklad_Set_Final_App")
+    
     if not os.path.exists(base): 
         os.makedirs(base, exist_ok=True)
     return base
@@ -36,7 +46,6 @@ def main(page: ft.Page):
         page.update()
 
     def show_detail_log(content):
-        # Убрано разделение по IMG, берем только текст
         text_content = content.split(" | IMG:")[0]
         dlg = ft.AlertDialog(
             title=ft.Text("Детали записи"),
@@ -165,11 +174,9 @@ def main(page: ft.Page):
                 sn = sns[i] if i < len(sns) else "Б/Н"
                 fname = f"sn_{datetime.now().strftime('%H%M%S_%f')}.txt"
                 with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f: f.write(f"{name}|{sn}|sn|1")
-        
         log_name = f"log_priem_{datetime.now().strftime('%H%M%S_%f')}.txt"
         log_text = f"ПРИЁМ: {name} ({val_str} {mode})"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
-        
         product_in.value = ""; count_in.value = "1"; serial_in.value = ""
         refresh_all()
 
@@ -178,27 +185,19 @@ def main(page: ft.Page):
         file_path = os.path.join(STOCK_DIR, serial_drop.value)
         if not os.path.exists(file_path): return
         with open(file_path, "r", encoding="utf-8") as f: data = f.read().split("|")
-        
         prod_name, sn_val, mode, current_qty = data[0], data[1], data[2], float(data[3])
         minus_qty = float(count_out.value.replace(",", ".")) if count_out.value else 1.0
         unit = "м" if mode == "m" else ("ш" if mode == "sh" else "шт")
-        
         if mode in ["m", "sh"]:
             new_qty = current_qty - minus_qty
-            if new_qty <= 0: 
-                os.remove(file_path)
-                final_spisano = f"{current_qty} {unit} (полностью)"
+            if new_qty <= 0: os.remove(file_path); final_spisano = f"{current_qty} {unit} (полностью)"
             else:
                 with open(file_path, "w", encoding="utf-8") as f: f.write(f"{prod_name}|{sn_val}|{mode}|{new_qty}")
                 final_spisano = f"{minus_qty} {unit} (остаток {new_qty})"
-        else: 
-            os.remove(file_path)
-            final_spisano = f"SN: {sn_val}"
-            
+        else: os.remove(file_path); final_spisano = f"SN: {sn_val}"
         log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
         log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | Списано: {final_spisano} | Л/С: {account_out.value} | Адрес: {address_out.value}"
         with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f: f.write(log_text)
-        
         account_out.value = ""; address_out.value = ""; count_out.value = "1"
         refresh_all(); navigate("history")
 
@@ -268,7 +267,7 @@ def main(page: ft.Page):
                 ])
             ])
         ),
-        ft.Text("Версия движка: 2.5 ALBERT TEXT-ONLY", color="grey", size=12)
+        ft.Text("Версия движка: 2.5 ALBERT ANDROID-FIX", color="grey", size=12)
     ], visible=False)
 
     page.add(main_view, priem_view, spisanie_view, history_view, vlan_view, ip_view, settings_view)
