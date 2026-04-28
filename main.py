@@ -40,8 +40,18 @@ def main(page: ft.Page):
     serial_in = ft.TextField(label="Серийные номера (через пробел)")
     priem_results = ft.Column(spacing=10)
 
-    product_drop = ft.Dropdown(label="Выбрать товар", border_color="#40C4FF")
-    serial_drop = ft.Dropdown(label="Выбрать SN или Метраж", border_color="#40C4FF")
+    # ИСПРАВЛЕНИЕ ТУТ: Добавлено позиционирование меню, чтобы оно не пряталось
+    product_drop = ft.Dropdown(
+        label="Выбрать товар", 
+        border_color="#40C4FF",
+        alignment=ft.alignment.bottom_center 
+    )
+    serial_drop = ft.Dropdown(
+        label="Выбрать SN или Метраж", 
+        border_color="#40C4FF",
+        alignment=ft.alignment.bottom_center
+    )
+    
     count_out = ft.TextField(label="Сколько списать", value="1")
     account_out = ft.TextField(label="Лицевой счет")
     address_out = ft.TextField(label="Адрес")
@@ -59,7 +69,7 @@ def main(page: ft.Page):
     ip_search = ft.TextField(label="Поиск по селу", prefix_icon=ft.Icons.SEARCH)
     ip_list_display = ft.Column(spacing=10)
 
-    # --- ФУНКЦИИ ОБНОВЛЕНИЯ (Твой движок 2.0) ---
+    # --- ФУНКЦИИ ОБНОВЛЕНИЯ ---
 
     def update_history_list():
         history_list.controls.clear()
@@ -72,7 +82,6 @@ def main(page: ft.Page):
                         ft.Container(
                             content=ft.Row([
                                 ft.Text(content, size=12, expand=True),
-                                # ВНИМАНИЕ: тут icon_size вместо size, чтобы не было ошибки
                                 ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red700", icon_size=18,
                                              on_click=lambda _, p=f: [os.remove(os.path.join(LOGS_DIR, p)), update_history_list()])
                             ]),
