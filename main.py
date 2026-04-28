@@ -2,12 +2,12 @@ import os
 import tempfile
 from datetime import datetime
 
-# Отключаем ctypes для предотвращения сбоя (Fatal Signal) на Android
+# Отключаем ctypes для предотвращения сбоя на Android
 os.environ["FLET_PYTHON_NO_CTYPES"] = "1"
 
 import flet as ft
 
-# --- ДВИЖОК: НАСТРОЙКА ПУТЕЙ И ПАПОК (Твой рабочий вариант) ---
+# --- ДВИЖОК: НАСТРОЙКА ПУТЕЙ ---
 def get_path():
     if os.name != 'nt':
         base = os.path.join(os.getcwd(), "Sklad_Set_Data")
@@ -34,11 +34,18 @@ def main(page: ft.Page):
     page.padding = 20
     page.title = "Склад и Сеть"
 
-    # --- КОМПОНЕНТЫ ИНТЕРФЕЙСА ---
+    # --- ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ---
     product_in = ft.TextField(label="Товар", border_color="#40C4FF")
     count_in = ft.TextField(label="Кол-во (напр. 10 или 1000м)", border_color="#40C4FF")
     serial_in = ft.TextField(label="Серийные номера (через пробел)")
     priem_results = ft.Column(spacing=10)
+
+    product_drop = ft.Dropdown(label="Выбрать товар", border_color="#40C4FF")
+    serial_drop = ft.Dropdown(label="Выбрать SN или Метраж", border_color="#40C4FF")
+    count_out = ft.TextField(label="Сколько списать", value="1")
+    account_out = ft.TextField(label="Лицевой счет")
+    address_out = ft.TextField(label="Адрес")
+    history_list = ft.Column(spacing=10)
 
     v_vlan = ft.TextField(label="VLAN", width=100)
     v_ip = ft.TextField(label="IP адрес", width=150)
@@ -52,111 +59,7 @@ def main(page: ft.Page):
     ip_search = ft.TextField(label="Поиск по селу", prefix_icon=ft.Icons.SEARCH)
     ip_list_display = ft.Column(spacing=10)
 
-    product_drop = ft.Dropdown(label="Выбрать товар", border_color="#40C4FF")
-    serial_drop = ft.Dropdown(label="Выбрать SN или Метраж", border_color="#40C4FF")
-    count_out = ft.TextField(label="Сколько списать (для метров)", value="1")
-    account_out = ft.TextField(label="Лицевой счет")
-    address_out = ft.TextField(label="Адрес")
-    history_list = ft.Column(spacing=10)
-
-    # --- ФУНКЦИИ ДВИЖКА ---
-
-    def refresh_all():
-        priem_results.controls.clear()
-        unique_products = set()
-        
-        if os.path.exists(STOCK_DIR):
-            for f in os.listdir(STOCK_DIR):
-                with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
-                    data = file.read().split("|")
-                    p_name = data[0]
-                    unique_products.add(p_name)
-                    priem_results.controls.append(
-                        ft.Container(
-                            content=ft.Row([
-                                ft.Text(f"{p_name} | {data[1]} | {data[3]}", size=14, expand=True),
-                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red400", 
-                                             on_click=lambda _, p=f: [os.remove(os.path.join(STOCK_DIR, p)), refresh_all()])
-                            ]),
-                            bgcolor="#1E1E20", padding=10, border_radius=8
-                        )
-                    )
-        
-        product_drop.options = [ft.dropdown.Option(p) for p in sorted(list(unique_products))]
-        update_vlan_list()
-        update_ip_list()
-        update_history_list()
-        page.update()
-
-    def add_to_stock(e):
-        name = product_in.value.strip()
-        raw_count = count_in.value.strip().lower()
-        sns = serial_in.value.strip().split()
-        
-        if name and raw_count:
-            if "м" in raw_count or "m" in raw_count:
-                val = raw_count.replace("м","").replace("m","")
-                fname = f"m_{datetime.now().strftime('%H%M%S_%f')}.txt"
-                with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f:
-                    f.write(f"{name}|Метраж|m|{val}")
-            else:
-                qty = int(raw_count) if raw_count.isdigit() else 1
-                for i in range(qty):
-                    sn = sns[i] if i < len(sns) else "Б/Н"
-                    fname = f"sn_{datetime.now().strftime('%H%M%S_%f')}.txt"
-                    with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f:
-                        f.write(f"{name}|{sn}|sn|1")
-            
-            product_in.value = ""; count_in.value = ""; serial_in.value = ""
-            refresh_all()
-
-    def update_serial_dropdown(e):
-        selected_prod = product_drop.value
-        serial_drop.options = []
-        if selected_prod and os.path.exists(STOCK_DIR):
-            for f in os.listdir(STOCK_DIR):
-                with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
-                    data = file.read().split("|")
-                    if data[0] == selected_prod:
-                        # Текст в выпадающем списке: "SN (Кол-во)"
-                        display_text = f"{data[1]} ({data[3]})"
-                        serial_drop.options.append(ft.dropdown.Option(key=f, text=display_text))
-        page.update()
-
-    product_drop.on_change = update_serial_dropdown
-
-    def complete_spisanie(e):
-        if not product_drop.value or not serial_drop.value:
-            return
-        
-        file_path = os.path.join(STOCK_DIR, serial_drop.value)
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = f.read().split("|")
-            
-            prod_name, sn_val, mode, current_qty = data[0], data[1], data[2], float(data[3])
-            minus_qty = float(count_out.value.replace(",", ".")) if count_out.value else 1.0
-            
-            # Логика списания метров или штук
-            if mode == "m" or mode == "sn": # Для SN просто удаляем файл, если списали 1
-                new_qty = current_qty - minus_qty
-                if new_qty <= 0 or mode == "sn":
-                    os.remove(file_path)
-                    final_info = f"{current_qty} (полностью)" if mode == "m" else f"SN: {sn_val}"
-                else:
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(f"{prod_name}|{sn_val}|{mode}|{new_qty}")
-                    final_info = f"{minus_qty} (ост. {new_qty})"
-
-                # Запись в историю
-                log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
-                log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | {final_info} | Л/С: {account_out.value} | Адр: {address_out.value}"
-                with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f:
-                    f.write(log_text)
-            
-            account_out.value = ""; address_out.value = ""; count_out.value = "1"
-            refresh_all()
-            navigate("history")
+    # --- ФУНКЦИИ ОБНОВЛЕНИЯ (Твой движок 2.0) ---
 
     def update_history_list():
         history_list.controls.clear()
@@ -169,23 +72,14 @@ def main(page: ft.Page):
                         ft.Container(
                             content=ft.Row([
                                 ft.Text(content, size=12, expand=True),
-                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red700", size=18,
+                                # ВНИМАНИЕ: тут icon_size вместо size, чтобы не было ошибки
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red700", icon_size=18,
                                              on_click=lambda _, p=f: [os.remove(os.path.join(LOGS_DIR, p)), update_history_list()])
                             ]),
                             bgcolor="#1E1E20", padding=10, border_radius=10
                         )
                     )
         page.update()
-
-    # --- ФУНКЦИИ VLAN И IP (из твоего кода) ---
-    def add_vlan(e):
-        if v_vlan.value and v_selo.value:
-            fname = f"v_{datetime.now().strftime('%H%M%S_%f')}.txt"
-            content = f"{v_selo.value}|{v_vlan.value}|{v_ip.value}"
-            with open(os.path.join(VLAN_DIR, fname), "w", encoding="utf-8") as f:
-                f.write(content)
-            v_vlan.value = ""; v_ip.value = ""; v_selo.value = ""
-            update_vlan_list()
 
     def update_vlan_list(e=None):
         vlan_list_display.controls.clear()
@@ -199,20 +93,11 @@ def main(page: ft.Page):
                             ft.Container(
                                 content=ft.Row([
                                     ft.Column([ft.Text(data[0], weight="bold"), ft.Text(f"VLAN: {data[1]} | IP: {data[2]}", color="grey")], expand=True),
-                                    ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, path=f: [os.remove(os.path.join(VLAN_DIR, path)), update_vlan_list()])
+                                    ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, p=f: [os.remove(os.path.join(VLAN_DIR, p)), update_vlan_list()])
                                 ]), bgcolor="#1E1E20", padding=10, border_radius=10
                             )
                         )
         page.update()
-
-    def add_ip(e):
-        if ip_addr.value and ip_selo.value:
-            fname = f"ip_{datetime.now().strftime('%H%M%S_%f')}.txt"
-            content = f"{ip_selo.value}|{ip_addr.value}|{ip_vlan.value}"
-            with open(os.path.join(IP_DIR, fname), "w", encoding="utf-8") as f:
-                f.write(content)
-            ip_vlan.value = ""; ip_addr.value = ""; ip_selo.value = ""
-            update_ip_list()
 
     def update_ip_list(e=None):
         ip_list_display.controls.clear()
@@ -226,11 +111,116 @@ def main(page: ft.Page):
                             ft.Container(
                                 content=ft.Row([
                                     ft.Column([ft.Text(data[0], weight="bold"), ft.Text(f"IP: {data[1]} | VLAN: {data[2]}", color="grey")], expand=True),
-                                    ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, path=f: [os.remove(os.path.join(IP_DIR, path)), update_ip_list()])
+                                    ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda _, p=f: [os.remove(os.path.join(IP_DIR, p)), update_ip_list()])
                                 ]), bgcolor="#1E1E20", padding=10, border_radius=10
                             )
                         )
         page.update()
+
+    def refresh_all():
+        priem_results.controls.clear()
+        unique_products = set()
+        if os.path.exists(STOCK_DIR):
+            for f in os.listdir(STOCK_DIR):
+                with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
+                    data = file.read().split("|")
+                    unique_products.add(data[0])
+                    priem_results.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Text(f"{data[0]} | {data[1]} | {data[3]}", size=14, expand=True),
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color="red400", icon_size=18,
+                                             on_click=lambda _, p=f: [os.remove(os.path.join(STOCK_DIR, p)), refresh_all()])
+                            ]),
+                            bgcolor="#1E1E20", padding=10, border_radius=8
+                        )
+                    )
+        product_drop.options = [ft.dropdown.Option(p) for p in sorted(list(unique_products))]
+        update_vlan_list()
+        update_ip_list()
+        update_history_list()
+
+    # --- ЛОГИКА КНОПОК ---
+
+    def add_to_stock(e):
+        name = product_in.value.strip()
+        raw_count = count_in.value.strip().lower()
+        sns = serial_in.value.strip().split()
+        if name and raw_count:
+            if "м" in raw_count or "m" in raw_count:
+                val = raw_count.replace("м","").replace("m","")
+                fname = f"m_{datetime.now().strftime('%H%M%S_%f')}.txt"
+                with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f:
+                    f.write(f"{name}|Метраж|m|{val}")
+            else:
+                qty = int(raw_count) if raw_count.isdigit() else 1
+                for i in range(qty):
+                    sn = sns[i] if i < len(sns) else "Б/Н"
+                    fname = f"sn_{datetime.now().strftime('%H%M%S_%f')}.txt"
+                    with open(os.path.join(STOCK_DIR, fname), "w", encoding="utf-8") as f:
+                        f.write(f"{name}|{sn}|sn|1")
+            product_in.value = ""; count_in.value = ""; serial_in.value = ""
+            refresh_all()
+
+    def update_serials(e):
+        selected_prod = product_drop.value
+        serial_drop.options = []
+        if selected_prod and os.path.exists(STOCK_DIR):
+            for f in os.listdir(STOCK_DIR):
+                with open(os.path.join(STOCK_DIR, f), "r", encoding="utf-8") as file:
+                    data = file.read().split("|")
+                    if data[0] == selected_prod:
+                        serial_drop.options.append(ft.dropdown.Option(key=f, text=f"{data[1]} ({data[3]})"))
+        page.update()
+
+    product_drop.on_change = update_serials
+
+    def complete_spisanie(e):
+        if not product_drop.value or not serial_drop.value: return
+        file_path = os.path.join(STOCK_DIR, serial_drop.value)
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = f.read().split("|")
+            prod_name, sn_val, mode, current_qty = data[0], data[1], data[2], float(data[3])
+            minus_qty = float(count_out.value.replace(",", ".")) if count_out.value else 1.0
+            
+            if mode == "m":
+                new_qty = current_qty - minus_qty
+                if new_qty <= 0:
+                    os.remove(file_path)
+                    final_info = f"{current_qty} м (полн.)"
+                else:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(f"{prod_name}|{sn_val}|{mode}|{new_qty}")
+                    final_info = f"{minus_qty} м (ост. {new_qty})"
+            else:
+                os.remove(file_path)
+                final_info = f"SN: {sn_val}"
+
+            log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
+            log_text = f"{datetime.now().strftime('%d.%m %H:%M')} | {prod_name} | {final_info} | Л/С: {account_out.value} | Адр: {address_out.value}"
+            with open(os.path.join(LOGS_DIR, log_name), "w", encoding="utf-8") as f:
+                f.write(log_text)
+            
+            account_out.value = ""; address_out.value = ""; count_out.value = "1"
+            refresh_all()
+            navigate("history")
+
+    def add_vlan_btn(e):
+        if v_vlan.value and v_selo.value:
+            fname = f"v_{datetime.now().strftime('%H%M%S_%f')}.txt"
+            with open(os.path.join(VLAN_DIR, fname), "w", encoding="utf-8") as f:
+                f.write(f"{v_selo.value}|{v_vlan.value}|{v_ip.value}")
+            v_vlan.value = ""; v_ip.value = ""; v_selo.value = ""
+            update_vlan_list()
+
+    def add_ip_btn(e):
+        if ip_addr.value and ip_selo.value:
+            fname = f"ip_{datetime.now().strftime('%H%M%S_%f')}.txt"
+            with open(os.path.join(IP_DIR, fname), "w", encoding="utf-8") as f:
+                f.write(f"{ip_selo.value}|{ip_addr.value}|{ip_vlan.value}")
+            ip_vlan.value = ""; ip_addr.value = ""; ip_selo.value = ""
+            update_ip_list()
 
     # --- НАВИГАЦИЯ ---
     def navigate(view):
@@ -270,7 +260,7 @@ def main(page: ft.Page):
     spisanie_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Списание")]),
         product_drop, serial_drop, count_out, account_out, address_out,
-        ft.ElevatedButton("ЗАВЕРШИТЬ СПИСАНИЕ", on_click=complete_spisanie, bgcolor="#FF5252", color="white", width=500),
+        ft.ElevatedButton("ЗАВЕРШИТЬ", on_click=complete_spisanie, bgcolor="#FF5252", color="white", width=500),
     ], visible=False, scroll=ft.ScrollMode.AUTO)
 
     history_view = ft.Column([
@@ -281,7 +271,7 @@ def main(page: ft.Page):
     vlan_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("База VLAN")]),
         ft.Row([v_vlan, v_ip, v_selo]),
-        ft.ElevatedButton("ДОБАВИТЬ В БАЗУ", on_click=add_vlan, bgcolor="#40C4FF", color="black", width=500),
+        ft.ElevatedButton("ДОБАВИТЬ В БАЗУ", on_click=add_vlan_btn, bgcolor="#40C4FF", color="black", width=500),
         ft.Divider(),
         v_search,
         vlan_list_display
@@ -290,7 +280,7 @@ def main(page: ft.Page):
     ip_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("База IP")]),
         ft.Row([ip_vlan, ip_addr, ip_selo]),
-        ft.ElevatedButton("ДОБАВИТЬ IP", on_click=add_ip, bgcolor="#40C4FF", color="black", width=500),
+        ft.ElevatedButton("ДОБАВИТЬ IP", on_click=add_ip_btn, bgcolor="#40C4FF", color="black", width=500),
         ft.Divider(),
         ip_search,
         ip_list_display
@@ -298,7 +288,7 @@ def main(page: ft.Page):
 
     settings_view = ft.Column([
         ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: navigate("main")), ft.Text("Настройки")]),
-        ft.Text("Версия движка: 2.0 (Файловая система)"),
+        ft.Text("Версия движка: 2.1 (Стабильная)"),
         ft.Text(f"Путь данных: {BASE_DIR}", size=10, color="grey")
     ], visible=False)
 
